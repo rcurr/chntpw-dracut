@@ -1,0 +1,89 @@
+#!/bin/bash
+
+# This file is part of chntpw dracut module.
+
+# chntpw dracut module  Copyright (C) 2017  Russell Currie
+
+# chntpw dracut module is free software: you can redistribute it and/or modify it under the
+# terms of the GNU Lesser General Public License as published by the Free Software
+# Foundation, either version 3 of the License, or (at your option) any later
+# version.
+
+# chntpw dracut module is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+# PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more details.
+
+# You should have received a copy of the GNU Lesser General Public License along
+# with chntpw dracut module.  If not, see <http://www.gnu.org/licenses/>.
+
+VERSION = "$Format:%h$"
+
+function joinby () { local IFS="$1"; shift; echo "$*"; }
+function doshell()
+{
+    /bin/bash
+}
+
+function startchntpw()
+{
+    local __part=$1
+    test -d /mnt || mkdir /mnt
+    # ntfs-3g seems reliable in giving you a rw mount
+    ntfs-3g "/dev/${__part}" /mnt || (echo "Cant mount /dev/${__part}" && doshell)
+    if [ -d /mnt/Windows/System32/config ]; then
+        cd /mnt/Windows/System32/config
+        chntpw SAM SYSTEM
+    else
+        echo "/mnt/Windows/System32/config doesnt exist."
+        doshell
+    fi
+}
+
+function doreboot()
+{
+    if mount | grep /mnt > /dev/null;then
+        umount -l /mnt
+    fi
+    reboot -f -d 1
+}
+
+function waitforsda()
+{
+for i in {1..20};do
+    test -e /dev/sda && break
+    echo "Waiting for /dev/sda..."
+    sleep 1s
+done
+}
+
+clear
+sleep 3s
+waitforsda
+
+DEVPARTITIONS=($(ls /dev/sd??))
+PARTITIONS=(${DEVPARTITIONS[@]//\/dev\/})
+
+OPTIONS=("shell" "reboot")
+OPTIONS+=(${PARTITIONS[@]})
+echo "chntpw dracut module ver: $VERSION - use partition or drop to shell"
+echo "Please enter your choice"
+shopt -s extglob
+
+PARTLIST="+($(joinby '|' ${PARTITIONS[@]}))"
+select opt in "${OPTIONS[@]}"
+do
+    case $opt in
+        $PARTLIST) 
+            startchntpw $opt
+            ;;
+        shell)
+            doshell
+            ;;
+        reboot)
+            doreboot
+            ;;
+        *)
+            echo "doesn't match, try again"
+            ;;
+    esac
+done
